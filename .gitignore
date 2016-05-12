@@ -19,6 +19,8 @@
 *.so
 *.so.*
 *.dylib
+*.db
+*.opendb
 
 # Executables
 *.exe
@@ -27,6 +29,10 @@
 *.i*86
 *.x86_64
 *.hex
+**/Debug/
+ipch/
+packages/
+.vs/
 
 # Debug files
 *.dSYM/
