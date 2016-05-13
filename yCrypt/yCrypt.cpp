@@ -13,6 +13,7 @@
 HINSTANCE hInst;                                // current instance
 //WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
 //WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
+WCHAR szFile[MAX_PATH];								// The title bar text
 
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -28,13 +29,40 @@ int APIENTRY wWinMain(HINSTANCE hInstance,
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
-    // TODO: Place code here.
+	int nArgs;
+
+	LPWSTR *szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
+	if (!szArglist) {
+		MessageBox(NULL, L"Cannot read arguments", L"File error", MB_ICONERROR);
+		return FALSE;
+	}
+		
+	if (nArgs < 2) {
+		MessageBox(NULL, L"Encryptor takes file als first argument", L"File error", MB_ICONERROR);
+		return FALSE;
+	}
+
+	wcscpy_s(szFile, MAX_PATH, szArglist[1]);
+	LocalFree(szArglist);
 
     // Initialize global strings
     //LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
     //LoadStringW(hInstance, IDC_YCRYPT, szWindowClass, MAX_LOADSTRING);
     //MyRegisterClass(hInstance);
 	
+	HANDLE hFile = CreateFile(szFile,                // name of the write
+		GENERIC_READ,          // open for reading
+		FILE_SHARE_READ,       // share for reading
+		NULL,                  // default security
+		OPEN_EXISTING,         // existing file only
+		FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, // normal file
+		NULL);                 // no attr. template
+
+	if (hFile == INVALID_HANDLE_VALUE) {
+		MessageBox(NULL, L"Unable to open file", L"File error", MB_ICONERROR);
+		return FALSE;
+	}
+
 	DialogBox(hInstance, MAKEINTRESOURCE(IDD_ENCRYPT), NULL, EncryptProc);
 
     // Perform application initialization:
@@ -191,6 +219,8 @@ INT_PTR CALLBACK EncryptProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 			rcOwner.top + (rc.bottom / 2),
 			0, 0,          // Ignores size arguments. 
 			SWP_NOSIZE);
+
+		SetWindowText(hDlg, szFile);
 
 		return (INT_PTR)TRUE;
 
