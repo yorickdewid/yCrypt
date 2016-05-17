@@ -95,7 +95,7 @@ BOOL SodiumEncryptFile(LPTSTR password)
 		return FALSE;
 	}
 
-	unsigned char *szFileBuffer = (unsigned char *) malloc(nFilesz * sizeof(char));
+	unsigned char *szFileBuffer = (unsigned char *) malloc(nFilesz * sizeof(char)); //TODO LocalAlloc
 	if (!szFileBuffer)
 	{
 		return FALSE;
@@ -105,22 +105,38 @@ BOOL SodiumEncryptFile(LPTSTR password)
 	if (!ReadFile(hFile, szFileBuffer, nFilesz, &numread, NULL))
 	{
 		DWORD x = GetLastError();
-		printf("xx ->  %ld\n", x);
+		printf("xx ->  %ld\n", x);//TODO
 	}
 
 	assert(nFilesz == numread);
 
 	CloseHandle(hFile);
 
+	// Wide password to multibyte password
+	size_t nConvChars;
+	char c_szPassword[100]; // This might not be enough
+	wcstombs_s(&nConvChars, c_szPassword, password, wcslen(password) + 1);
+
+	// DERIVE KEY
+	BYTE salt[crypto_pwhash_scryptsalsa208sha256_SALTBYTES];
+	BYTE key[crypto_secretbox_KEYBYTES];
+
+	randombytes_buf(salt, sizeof(salt));
+
+	if (crypto_pwhash_scryptsalsa208sha256(key, sizeof(key), c_szPassword, strlen(c_szPassword), salt,
+		crypto_pwhash_scryptsalsa208sha256_OPSLIMIT_INTERACTIVE,
+		crypto_pwhash_scryptsalsa208sha256_MEMLIMIT_INTERACTIVE) != 0) {
+		/* out of memory */ //TODO
+	}
+
 	// ENC
 	int nCiphersz = crypto_secretbox_MACBYTES + nFilesz;
 	LPBYTE szCipherBuffer = (LPBYTE) malloc(nCiphersz * sizeof(char));
 
 	BYTE nonce[crypto_secretbox_NONCEBYTES];
-	BYTE key[crypto_secretbox_KEYBYTES];
 
 	randombytes_buf(nonce, sizeof(nonce));
-	randombytes_buf(key, sizeof(key));
+	// randombytes_buf(key, sizeof(key));
 	crypto_secretbox_easy(szCipherBuffer, szFileBuffer, nFilesz, nonce, key);
 	
 	YENCFILE encFileStrct;
