@@ -136,9 +136,13 @@ BOOL SodiumEncryptFile(LPTSTR password)
 	BYTE nonce[crypto_secretbox_NONCEBYTES];
 
 	randombytes_buf(nonce, sizeof(nonce));
-	// randombytes_buf(key, sizeof(key));
 	crypto_secretbox_easy(szCipherBuffer, szFileBuffer, nFilesz, nonce, key);
 	
+	// Override sensitive in memory
+	sodium_memzero(password, wcslen(password) * sizeof(TCHAR));
+	sodium_memzero(c_szPassword, strlen(c_szPassword) * sizeof(BYTE));
+	sodium_memzero(key, sizeof(key));
+
 	YENCFILE encFileStrct;
 	memcpy(encFileStrct.cbSignature, "YCRYPT V100$", 16);
 	memcpy(encFileStrct.cbNonce, nonce, crypto_secretbox_NONCEBYTES);
