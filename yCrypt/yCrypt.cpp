@@ -115,6 +115,8 @@ BOOL SodiumEncryptFile(LPTSTR password)
 {
 	ULONG numread;
 	BOOL bErrorFlag;
+	HLOCAL hFileBuffer = NULL;
+	HLOCAL hCipherBuffer = NULL;
 	int nFilesz;
 
 	// Retrieve file size
@@ -126,7 +128,7 @@ BOOL SodiumEncryptFile(LPTSTR password)
 		goto enc_exit_on_failure;
 	}
 
-	HLOCAL hFileBuffer = LocalAlloc(LPTR, nFilesz * sizeof(BYTE));
+	hFileBuffer = LocalAlloc(LPTR, nFilesz * sizeof(BYTE));
 	if (!hFileBuffer)
 	{
 		MessageBox(NULL, L"Cannot allocate memory", L"Encryption error", MB_ICONERROR);
@@ -170,7 +172,7 @@ BOOL SodiumEncryptFile(LPTSTR password)
 
 	// ENC
 	int nCiphersz = crypto_secretbox_MACBYTES + nFilesz;
-	HLOCAL hCipherBuffer = LocalAlloc(LPTR, nCiphersz * sizeof(BYTE));
+	hCipherBuffer = LocalAlloc(LPTR, nCiphersz * sizeof(BYTE));
 	if (!hCipherBuffer) {
 		MessageBox(NULL, L"Cannot allocate memory", L"Encryption error", MB_ICONERROR);
 
@@ -256,6 +258,8 @@ BOOL SodiumDecryptFile(LPTSTR password)
 {
 	ULONG numread;
 	BOOL bErrorFlag;
+	HLOCAL hFileBuffer = NULL;
+	HLOCAL hCipherBuffer = NULL;
 	YENCFILE encFileStrct;
 
 	if (SetFilePointer(hFileIn, 0, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
@@ -290,7 +294,7 @@ BOOL SodiumDecryptFile(LPTSTR password)
 		goto dec_exit_on_failure;
 	}
 
-	HLOCAL hCipherBuffer = LocalAlloc(LPTR, (encFileStrct.rawSize + crypto_secretbox_MACBYTES) * sizeof(BYTE));
+	hCipherBuffer = LocalAlloc(LPTR, (encFileStrct.rawSize + crypto_secretbox_MACBYTES) * sizeof(BYTE));
 	if (!hCipherBuffer) {
 		MessageBox(NULL, L"Cannot allocate memory", L"Decryption error", MB_ICONERROR);
 
@@ -326,7 +330,7 @@ BOOL SodiumDecryptFile(LPTSTR password)
 		goto dec_exit_on_failure;
 	}
 
-	HLOCAL hFileBuffer = LocalAlloc(LPTR, encFileStrct.rawSize * sizeof(char));
+	hFileBuffer = LocalAlloc(LPTR, encFileStrct.rawSize * sizeof(char));
 	if (!hFileBuffer) {
 		MessageBox(NULL, L"Cannot allocate memory", L"Encryption error", MB_ICONERROR);
 
