@@ -16,7 +16,7 @@
 static LPCWCHAR pszSignature = L"YCRYPT V100$";
 
 // Global Variables:
-HANDLE hFile;										// File handler
+HANDLE hFileIn;										// File handler
 WCHAR szFile[MAX_PATH];								// Original file name
 
 // Forward declarations of functions included in this code module:
@@ -71,37 +71,41 @@ int APIENTRY wWinMain(HINSTANCE hInstance,
 	LocalFree(szArglist);
 
 	// Check if file exist and is accessable
-	hFile = CreateFile(szFile,	// name of the write
-		GENERIC_READ,			// open for reading
-		0,						// share for reading
-		NULL,					// default security
-		OPEN_EXISTING,			// existing file only
-		FILE_ATTRIBUTE_NORMAL,	// normal file
-		NULL);					// no attr. template
+	hFileIn = CreateFile(
+		szFile,					// Name of the write
+		GENERIC_READ,			// Open for reading
+		0,						// Share for reading
+		NULL,					// Default security
+		OPEN_EXISTING,			// Existing file only
+		FILE_ATTRIBUTE_NORMAL,	// Normal file
+		NULL);					// No attr. template
 
-	if (hFile == INVALID_HANDLE_VALUE)
+	if (hFileIn == INVALID_HANDLE_VALUE)
 	{
-		MessageBox(NULL, L"Unable to open file", L"File error", MB_ICONERROR);
+		MessageBox(NULL, L"Unable to open file", L"Initialization error", MB_ICONERROR);
 		return FALSE;
 	}
 
 	LPCWSTR szExt = fileNameExt(szFile);
 	if (!wcscmp(szExt, L"yc")) {
+
 		// Decryption process
 		DialogBox(hInstance, MAKEINTRESOURCE(IDD_DECRYPT), NULL, DecryptProc);
 	} else {
+
 		// Encryption process
 		DialogBox(hInstance, MAKEINTRESOURCE(IDD_ENCRYPT), NULL, EncryptProc);
 	}
 
-    MSG msg;
-
-    // Main message loop:
+	// Main message loop:
+    MSG msg;    
     while (GetMessage(&msg, nullptr, 0, 0))
     {
         TranslateMessage(&msg);
 		DispatchMessage(&msg);
     }
+
+	CloseHandle(hFileIn);
 
     return (int) msg.wParam;
 }
@@ -114,12 +118,12 @@ BOOL SodiumEncryptFile(LPTSTR password)
 	int nFilesz;
 
 	// Retrieve file size
-	if ((nFilesz = GetFileSize(hFile, 0)) == 0)
+	if ((nFilesz = GetFileSize(hFileIn , 0)) == 0)
 	{
 		MessageBox(NULL, L"Cannot get filesize", L"Encryption error", MB_ICONERROR);
 
 		bErrorFlag = FALSE;
-		goto exit_on_failure;
+		goto enc_exit_on_failure;
 	}
 
 	HLOCAL hFileBuffer = LocalAlloc(LPTR, nFilesz * sizeof(BYTE));
@@ -128,26 +132,24 @@ BOOL SodiumEncryptFile(LPTSTR password)
 		MessageBox(NULL, L"Cannot allocate memory", L"Encryption error", MB_ICONERROR);
 
 		bErrorFlag = FALSE;
-		goto exit_on_failure;
+		goto enc_exit_on_failure;
 	}
 
 	// Read entire file into memory
-	if (!ReadFile(hFile, hFileBuffer, nFilesz, &numread, NULL))
+	if (!ReadFile(hFileIn, hFileBuffer, nFilesz, &numread, NULL))
 	{
 		MessageBox(NULL, L"Cannot read file into memory", L"Encryption error", MB_ICONERROR);
 
 		bErrorFlag = FALSE;
-		goto exit_on_failure;
+		goto enc_exit_on_failure;
 	}
 
 	// For now read byes must equal filesize
 	assert(nFilesz == numread);
 
-	CloseHandle(hFile);
-
 	// Wide password to multibyte password
-	size_t nConvChars;
-	char c_szPassword[100]; // This might not be enough
+	SIZE_T nConvChars;
+	CHAR c_szPassword[100]; // This might not be enough
 	wcstombs_s(&nConvChars, c_szPassword, password, wcslen(password) + 1);
 
 	// DERIVE KEY
@@ -163,13 +165,18 @@ BOOL SodiumEncryptFile(LPTSTR password)
 		MessageBox(NULL, L"Operation takes too much system resources", L"Encryption error", MB_ICONERROR);
 
 		bErrorFlag = FALSE;
-		goto exit_on_failure;
+		goto enc_exit_on_failure;
 	}
 
 	// ENC
 	int nCiphersz = crypto_secretbox_MACBYTES + nFilesz;
 	HLOCAL hCipherBuffer = LocalAlloc(LPTR, nCiphersz * sizeof(BYTE));
-	// handle NULL
+	if (!hCipherBuffer) {
+		MessageBox(NULL, L"Cannot allocate memory", L"Encryption error", MB_ICONERROR);
+
+		bErrorFlag = FALSE;
+		goto enc_exit_on_failure;
+	}
 
 	BYTE nonce[crypto_secretbox_NONCEBYTES];
 
@@ -188,7 +195,7 @@ BOOL SodiumEncryptFile(LPTSTR password)
 	wcscat_s(szFile, MAX_PATH, L".yc");
 
 	// WRITE
-	HANDLE hFileEncrypt = CreateFile(
+	HANDLE hFileOut = CreateFile(
 		szFile,					// Name of the write
 		GENERIC_WRITE,			// Open for writing
 		0,						// Do not share
@@ -197,15 +204,15 @@ BOOL SodiumEncryptFile(LPTSTR password)
 		FILE_ATTRIBUTE_NORMAL,	// Normal file
 		NULL);					// No attr. template
 
-	if (hFileEncrypt == INVALID_HANDLE_VALUE)
+	if (hFileOut == INVALID_HANDLE_VALUE)
 	{
 		MessageBox(NULL, L"Cannot open file", L"Encryption error", MB_ICONERROR);
 		bErrorFlag = FALSE;
-		goto exit_on_failure;
+		goto enc_exit_on_failure;
 	}
 
 	bErrorFlag = WriteFile(
-		hFileEncrypt,			// Open file handle
+		hFileOut,			// Open file handle
 		&encFileStrct,			// Start of data to write
 		sizeof(YENCFILE),		// Number of bytes to write
 		&numread,				// Number of bytes that were written
@@ -214,11 +221,11 @@ BOOL SodiumEncryptFile(LPTSTR password)
 	if (!bErrorFlag)
 	{
 		MessageBox(NULL, L"Cannot write to file", L"Encryption error", MB_ICONERROR);
-		goto exit_on_failure;
+		goto enc_exit_on_failure;
 	}
 
 	bErrorFlag = WriteFile(
-		hFileEncrypt,			// Open file handle
+		hFileOut,			// Open file handle
 		hCipherBuffer,			// Start of data to write
 		nCiphersz,				// Number of bytes to write
 		&numread,				// Number of bytes that were written
@@ -227,12 +234,12 @@ BOOL SodiumEncryptFile(LPTSTR password)
 	if (!bErrorFlag)
 	{
 		MessageBox(NULL, L"Cannot write to file", L"Encryption error", MB_ICONERROR);
-		goto exit_on_failure;
+		goto enc_exit_on_failure;
 	}
 
-	CloseHandle(hFileEncrypt);
+	CloseHandle(hFileOut);
 
-exit_on_failure:
+enc_exit_on_failure:
 	// Override sensitive in memory
 	sodium_memzero(password, wcslen(password) * sizeof(TCHAR));
 	sodium_memzero(c_szPassword, strlen(c_szPassword) * sizeof(BYTE));
@@ -250,19 +257,37 @@ BOOL SodiumDecryptFile(LPTSTR password)
 	ULONG numread;
 	BOOL bErrorFlag;
 	YENCFILE encFileStrct;
-	int nFilesz;
 
-	if (!ReadFile(hFile, &encFileStrct, sizeof(YENCFILE), &numread, NULL)) {
+	if (SetFilePointer(hFileIn, 0, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+	{
+		MessageBox(NULL, L"Cannot set file pointer", L"Decryption error", MB_ICONERROR);
+
+		bErrorFlag = FALSE;
+		goto dec_exit_on_failure;
+	}
+
+	if (!ReadFile(hFileIn, &encFileStrct, sizeof(YENCFILE), &numread, NULL))
+	{
 		MessageBox(NULL, L"Cannot read file into memory", L"Decryption error", MB_ICONERROR);
 
 		bErrorFlag = FALSE;
-		// goto exit_on_failure;
+		goto dec_exit_on_failure;
 	}
 
 	if (sodium_memcmp(encFileStrct.cbSignature, pszSignature, MAX_SIGNATURE))
 	{
 		MessageBox(NULL, L"This is not an encrypted file", L"Decryption error", MB_ICONERROR);
+
 		bErrorFlag = FALSE;
+		goto dec_exit_on_failure;
+	}
+
+	if (encFileStrct.algorithm != YC_SCRYPT_SALSA_POLY)
+	{
+		MessageBox(NULL, L"Encryption method not available", L"Decryption error", MB_ICONEXCLAMATION);
+
+		bErrorFlag = FALSE;
+		goto dec_exit_on_failure;
 	}
 
 	HLOCAL hCipherBuffer = LocalAlloc(LPTR, (encFileStrct.rawSize + crypto_secretbox_MACBYTES) * sizeof(BYTE));
@@ -270,24 +295,22 @@ BOOL SodiumDecryptFile(LPTSTR password)
 		MessageBox(NULL, L"Cannot allocate memory", L"Decryption error", MB_ICONERROR);
 
 		bErrorFlag = FALSE;
-		// goto exit_on_failure;
+		goto dec_exit_on_failure;
 	}
 
-	if (!ReadFile(hFile, hCipherBuffer, encFileStrct.rawSize + crypto_secretbox_MACBYTES, &numread, NULL)) {
+	if (!ReadFile(hFileIn, hCipherBuffer, encFileStrct.rawSize + crypto_secretbox_MACBYTES, &numread, NULL)) {
 		MessageBox(NULL, L"Cannot read file into memory", L"Decryption error", MB_ICONERROR);
 
 		bErrorFlag = FALSE;
-		// goto exit_on_failure;
+		goto dec_exit_on_failure;
 	}
 
 	// For now read byes must equal filesize
 	assert((encFileStrct.rawSize + crypto_secretbox_MACBYTES) == numread);
 
-	CloseHandle(hFile);
-
 	// Wide password to multibyte password
 	size_t nConvChars;
-	char c_szPassword[100]; // This might not be enough
+	char c_szPassword[100]; //TODO This might not be enough
 	wcstombs_s(&nConvChars, c_szPassword, password, wcslen(password) + 1);
 
 	// DERIVE KEY
@@ -300,45 +323,59 @@ BOOL SodiumDecryptFile(LPTSTR password)
 		MessageBox(NULL, L"Operation takes too much system resources", L"Decryption error", MB_ICONERROR);
 
 		bErrorFlag = FALSE;
-		// goto exit_on_failure;
+		goto dec_exit_on_failure;
 	}
 
-	HLOCAL hDecBuffer = LocalAlloc(LPTR, encFileStrct.rawSize * sizeof(char));
-	if (!hDecBuffer) {
-		return FALSE;
+	HLOCAL hFileBuffer = LocalAlloc(LPTR, encFileStrct.rawSize * sizeof(char));
+	if (!hFileBuffer) {
+		MessageBox(NULL, L"Cannot allocate memory", L"Encryption error", MB_ICONERROR);
+
+		bErrorFlag = FALSE;
+		goto dec_exit_on_failure;
 	}
 
-	if (crypto_secretbox_open_easy((LPBYTE)hDecBuffer, (LPBYTE)hCipherBuffer, encFileStrct.rawSize + crypto_secretbox_MACBYTES, encFileStrct.cbNonce, key) != 0) {
+	if (crypto_secretbox_open_easy((LPBYTE)hFileBuffer, (LPBYTE)hCipherBuffer, encFileStrct.rawSize + crypto_secretbox_MACBYTES, encFileStrct.cbNonce, key) != 0) {
 		MessageBox(NULL, L"Decryption failed, please try again", L"Decryption error", MB_ICONERROR);
-		return FALSE;
+		
+		bErrorFlag = FALSE;
+		goto dec_exit_on_failure;
 	}
 
 	// WRITE
-	HANDLE hFileEncrypt = CreateFile(
-		L"kaas.txt",			// name of the write
-		GENERIC_WRITE,			// open for writing
-		0,						// do not share
-		NULL,					// default security
-		CREATE_NEW,				// create new file only
-		FILE_ATTRIBUTE_NORMAL,	// normal file
-		NULL);					// no attr. template
+	HANDLE hFileOut = CreateFile(
+		L"kaas.txt",			// Name of the write
+		GENERIC_WRITE,			// Open for writing
+		0,						// Do not share
+		NULL,					// Default security
+		CREATE_NEW,				// Create new file only
+		FILE_ATTRIBUTE_NORMAL,	// Normal file
+		NULL);					// No attr. template
 
-	if (hFileEncrypt == INVALID_HANDLE_VALUE) {
+	if (hFileOut == INVALID_HANDLE_VALUE) {
 		MessageBox(NULL, L"Cannot open file", L"Decryption error", MB_ICONERROR);
 		bErrorFlag = FALSE;
-		// goto exit_on_failure;
+		goto dec_exit_on_failure;
 	}
 
 	bErrorFlag = WriteFile(
-		hFileEncrypt,			// open file handle
-		hDecBuffer,			// start of data to write
-		encFileStrct.rawSize,	// number of bytes to write
-		&numread,				// number of bytes that were written
-		NULL);					// no overlapped structure'
+		hFileOut,				// Open file handle
+		hFileBuffer,				// Start of data to write
+		encFileStrct.rawSize,	// Number of bytes to write
+		&numread,				// Number of bytes that were written
+		NULL);					// No overlapped structure'
 
-	CloseHandle(hFileEncrypt);
+	CloseHandle(hFileOut);
 
-	return TRUE;
+dec_exit_on_failure:
+	// Override sensitive in memory
+	sodium_memzero(password, wcslen(password) * sizeof(TCHAR));
+	sodium_memzero(c_szPassword, strlen(c_szPassword) * sizeof(BYTE));
+	sodium_memzero(key, crypto_secretbox_KEYBYTES);
+
+	LocalFree(hFileBuffer);
+	LocalFree(hCipherBuffer);
+
+	return bErrorFlag;
 }
 
 // Message handler for about box.
