@@ -13,12 +13,22 @@
 #define YC_SCRYPT_AES_GCM		0x10
 #define YC_ARGON2_AES_GCM		0x12
 
+static LPCWCHAR pszSignature = L"YCRYPT V100$";
+
 // Global Variables:
 HANDLE hFile;										// File handler
 WCHAR szFile[MAX_PATH];								// Original file name
 
 // Forward declarations of functions included in this code module:
 INT_PTR CALLBACK	EncryptProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam);
+
+typedef struct tagYENCFILE
+{
+	BYTE		cbSignature[MAX_SIGNATURE];				// yCrypt signature
+	BYTE		cbNonce[crypto_secretbox_NONCEBYTES];	// Cipher nonce
+	UINT        rawSize;								// Original filesize in bytes
+	UINT        algorithm;								// Algorithms used in this encryption
+} YENCFILE;
 
 LPCWCHAR fileNameExt(LPCWCHAR filename)
 {
@@ -93,15 +103,6 @@ int APIENTRY wWinMain(HINSTANCE hInstance,
 }
 
 
-typedef struct tagYENCFILE
-{
-	BYTE		cbSignature[MAX_SIGNATURE];
-	BYTE		cbNonce[crypto_secretbox_NONCEBYTES];
-	UINT        rawSize;
-	int         algorithm;
-} YENCFILE;
-
-
 BOOL SodiumEncryptFile(LPTSTR password)
 {
 	ULONG numread;
@@ -117,8 +118,8 @@ BOOL SodiumEncryptFile(LPTSTR password)
 		goto exit_on_failure;
 	}
 
-	unsigned char *szFileBuffer = (unsigned char *) malloc(nFilesz * sizeof(char)); //TODO LocalAlloc
-	if (!szFileBuffer)
+	HLOCAL hFileBuffer = LocalAlloc(LPTR, nFilesz * sizeof(BYTE));
+	if (!hFileBuffer)
 	{
 		MessageBox(NULL, L"Cannot allocate memory", L"Encryption error", MB_ICONERROR);
 
@@ -127,7 +128,7 @@ BOOL SodiumEncryptFile(LPTSTR password)
 	}
 
 	// Read entire file into memory
-	if (!ReadFile(hFile, szFileBuffer, nFilesz, &numread, NULL))
+	if (!ReadFile(hFile, hFileBuffer, nFilesz, &numread, NULL))
 	{
 		MessageBox(NULL, L"Cannot read file into memory", L"Encryption error", MB_ICONERROR);
 
@@ -149,9 +150,9 @@ BOOL SodiumEncryptFile(LPTSTR password)
 	BYTE salt[crypto_pwhash_scryptsalsa208sha256_SALTBYTES];
 	BYTE key[crypto_secretbox_KEYBYTES];
 
-	randombytes_buf(salt, sizeof(salt));
+	randombytes_buf(salt, crypto_pwhash_scryptsalsa208sha256_SALTBYTES);
 
-	if (crypto_pwhash_scryptsalsa208sha256(key, sizeof(key), c_szPassword, strlen(c_szPassword), salt,
+	if (crypto_pwhash_scryptsalsa208sha256(key, crypto_secretbox_KEYBYTES, c_szPassword, strlen(c_szPassword), salt,
 		crypto_pwhash_scryptsalsa208sha256_OPSLIMIT_INTERACTIVE,
 		crypto_pwhash_scryptsalsa208sha256_MEMLIMIT_INTERACTIVE) != 0) {
 		
@@ -163,15 +164,15 @@ BOOL SodiumEncryptFile(LPTSTR password)
 
 	// ENC
 	int nCiphersz = crypto_secretbox_MACBYTES + nFilesz;
-	LPBYTE szCipherBuffer = (LPBYTE) malloc(nCiphersz * sizeof(char));
+	HLOCAL hCipherBuffer = LocalAlloc(LPTR, nCiphersz * sizeof(BYTE));
 
 	BYTE nonce[crypto_secretbox_NONCEBYTES];
 
 	randombytes_buf(nonce, sizeof(nonce));
-	crypto_secretbox_easy(szCipherBuffer, szFileBuffer, nFilesz, nonce, key);
+	crypto_secretbox_easy((LPBYTE)hCipherBuffer, (LPBYTE)hFileBuffer, nFilesz, nonce, key);
 	
 	YENCFILE encFileStrct;
-	memcpy(encFileStrct.cbSignature, "YCRYPT V100$", MAX_SIGNATURE);
+	memcpy(encFileStrct.cbSignature, pszSignature, MAX_SIGNATURE);
 	memcpy(encFileStrct.cbNonce, nonce, crypto_secretbox_NONCEBYTES);
 	encFileStrct.rawSize = nFilesz;
 	encFileStrct.algorithm = YC_SCRYPT_SALSA_POLY;
@@ -210,7 +211,7 @@ BOOL SodiumEncryptFile(LPTSTR password)
 
 	bErrorFlag = WriteFile(
 		hFileEncrypt,			// open file handle
-		szCipherBuffer,			// start of data to write
+		hCipherBuffer,			// start of data to write
 		nCiphersz,				// number of bytes to write
 		&numread,				// number of bytes that were written
 		NULL);					// no overlapped structure
@@ -228,6 +229,9 @@ exit_on_failure:
 	sodium_memzero(password, wcslen(password) * sizeof(TCHAR));
 	sodium_memzero(c_szPassword, strlen(c_szPassword) * sizeof(BYTE));
 	sodium_memzero(key, sizeof(key));
+
+	LocalFree(hFileBuffer);
+	LocalFree(hCipherBuffer);
 
 	return bErrorFlag;
 	/*
