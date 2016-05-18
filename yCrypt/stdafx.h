@@ -23,6 +23,7 @@
 // Windows Header Files:
 #include <windows.h>
 #include <shellapi.h>
+#include <Shobjidl.h>
 
 // C RunTime Header Files
 #include <stdlib.h>

@@ -44,6 +44,58 @@ LPCWCHAR fileNameExt(LPCWCHAR filename)
 	return dot + 1;
 }
 
+PWCHAR fileNameStripExt(PWCHAR filename)
+{
+	PWCHAR dot = wcsrchr(filename, '.');
+	if (!dot || dot == filename) {
+		return L"";
+	}
+
+	dot[0] = '\0';
+
+	return filename;
+}
+
+PWSTR openUserFileDiaglog()
+{
+	PWSTR pszFilePath = NULL;
+
+	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+	if (SUCCEEDED(hr)) {
+		IFileOpenDialog *pFileOpen = NULL;
+
+		// Create the FileOpenDialog object.
+		hr = CoCreateInstance(
+			CLSID_FileOpenDialog,
+			NULL,
+			CLSCTX_ALL,
+			IID_IFileOpenDialog,
+			(void**)&pFileOpen);
+
+		if (SUCCEEDED(hr)) {
+			// Show the Open dialog box.
+			hr = pFileOpen->Show(NULL);
+
+			// Get the file name from the dialog box.
+			if (SUCCEEDED(hr)) {
+				IShellItem *pItem = NULL;
+
+				hr = pFileOpen->GetResult(&pItem);
+				if (SUCCEEDED(hr)) {
+					hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath);
+					pItem->Release();
+				}
+			}
+
+			pFileOpen->Release();
+		}
+
+		CoUninitialize();
+	}
+
+	return pszFilePath;
+}
+
 int APIENTRY wWinMain(HINSTANCE hInstance,
                      HINSTANCE hPrevInstance,
                      LPWSTR    lpCmdLine,
@@ -63,11 +115,13 @@ int APIENTRY wWinMain(HINSTANCE hInstance,
 		
 	if (nArgs < 2)
 	{
-		MessageBox(NULL, L"Encryptor takes file als first argument", L"File error", MB_ICONERROR);
-		return FALSE;
+		LPWSTR pszFilePath = openUserFileDiaglog();
+		wcscpy_s(szFile, MAX_PATH, pszFilePath);
+		CoTaskMemFree(pszFilePath);
+	} else {
+		wcscpy_s(szFile, MAX_PATH, szArglist[1]);
 	}
-
-	wcscpy_s(szFile, MAX_PATH, szArglist[1]);
+	
 	LocalFree(szArglist);
 
 	// Check if file exist and is accessable
@@ -345,9 +399,11 @@ BOOL SodiumDecryptFile(LPTSTR password)
 		goto dec_exit_on_failure;
 	}
 
+	LPCWSTR szOriginalFileName = fileNameStripExt(szFile);
+
 	// WRITE
 	HANDLE hFileOut = CreateFile(
-		L"kaas.txt",			// Name of the write
+		szOriginalFileName,		// Name of the write
 		GENERIC_WRITE,			// Open for writing
 		0,						// Do not share
 		NULL,					// Default security
@@ -363,7 +419,7 @@ BOOL SodiumDecryptFile(LPTSTR password)
 
 	bErrorFlag = WriteFile(
 		hFileOut,				// Open file handle
-		hFileBuffer,				// Start of data to write
+		hFileBuffer,			// Start of data to write
 		encFileStrct.rawSize,	// Number of bytes to write
 		&numread,				// Number of bytes that were written
 		NULL);					// No overlapped structure'
