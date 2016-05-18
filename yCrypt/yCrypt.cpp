@@ -61,7 +61,8 @@ PWSTR openUserFileDiaglog()
 	PWSTR pszFilePath = NULL;
 
 	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-	if (SUCCEEDED(hr)) {
+	if (SUCCEEDED(hr))
+	{
 		IFileOpenDialog *pFileOpen = NULL;
 
 		// Create the FileOpenDialog object.
@@ -72,16 +73,19 @@ PWSTR openUserFileDiaglog()
 			IID_IFileOpenDialog,
 			(void**)&pFileOpen);
 
-		if (SUCCEEDED(hr)) {
+		if (SUCCEEDED(hr))
+		{
 			// Show the Open dialog box.
 			hr = pFileOpen->Show(NULL);
 
 			// Get the file name from the dialog box.
-			if (SUCCEEDED(hr)) {
+			if (SUCCEEDED(hr))
+			{
 				IShellItem *pItem = NULL;
 
 				hr = pFileOpen->GetResult(&pItem);
-				if (SUCCEEDED(hr)) {
+				if (SUCCEEDED(hr))
+				{
 					hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath);
 					pItem->Release();
 				}
@@ -116,6 +120,11 @@ int APIENTRY wWinMain(HINSTANCE hInstance,
 	if (nArgs < 2)
 	{
 		LPWSTR pszFilePath = openUserFileDiaglog();
+		if (!pszFilePath)
+		{
+			return FALSE;
+		}
+		
 		wcscpy_s(szFile, MAX_PATH, pszFilePath);
 		CoTaskMemFree(pszFilePath);
 	} else {
@@ -488,6 +497,11 @@ INT_PTR CALLBACK EncryptProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPar
 
 			if (!wcslen(pwd1)) {
 				MessageBox(hDlg, L"Password cannot be empty", L"Password error", MB_ICONERROR);
+				break;
+			}
+
+			if (wcslen(pwd1) < 3) {
+				MessageBox(hDlg, L"Passwords to short", L"Password error", MB_ICONERROR);
 				break;
 			}
 
